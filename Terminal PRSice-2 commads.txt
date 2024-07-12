@@ -1,0 +1,760 @@
+PRSice-2 and PLINK commands 
+
+#Making plink 1.9 readable been files for clumping and other QCing
+/mnt/shared_folders/eResearch_glaucoma_project/Sirithi/cross_validation/qctool -g /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Test01_withdata/ukb22828_c1_b0_v3.bgen \
+                -bgen-file-version 1.1 \
+                -og /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/clumping/downcode_bgen/chr1_downcoded_file.bgen
+
+
+for i in {2..22}; do         # 1..22
+/mnt/shared_folders/eResearch_glaucoma_project/plink2/plink2 \
+ --bgen /mnt/shared_folders/eResearch_glaucoma_project/UKBB_Data_Basket2/imputed_genome/ukb22828_c${i}_b0_v3.bgen ref-first \
+ --sample /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Test01_withdata/ukb22828_c1_b0_v3_s487208.sample \
+ --make-bed \
+ --rm-dup exclude-all \
+ --out /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/clumping/downcode_bgen/chr${i}_downcoded
+done
+
+
+for i in {16..22}; do 
+    /mnt/shared_folders/eResearch_glaucoma_project/plink2/plink2 \
+    --bgen /mnt/shared_folders/eResearch_glaucoma_project/UKBB_Data_Basket2/imputed_genome/ukb22828_c${i}_b0_v3.bgen ref-first \
+    --sample /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Test01_withdata/ukb22828_c1_b0_v3_s487208.sample \
+    --make-bed \
+    --out /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/clumping/downcode_bgen/chr${i}_downcoded
+done
+
+
+/mnt/programs/plink1.9/plink \
+    --bfile /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/clumping/downcode_bgen/chr1_downcoded  \
+    --list-duplicate-vars
+
+
+/mnt/programs/plink1.9/plink \
+    --bfile /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/clumping/downcode_bgen/chr1_downcoded \
+    --write-snplist > /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/clumping/clumped_bgen/chr1
+
+
+zcat /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Test01_withdata/GCST90011766_buildGRCh37.txt.gz | awk '{print $3}' | grep "rs151120166"
+
+echo "rs151120166" > /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/clumping/clumped_bgen/exclusion_list.txt
+
+/mnt/programs/plink1.9/plink \
+    --bfile mnt/shared_folders/eResearch_glaucoma_project/Sirithi/clumping/downcode_bgen/chr1_downcoded \
+    --list-duplicate-vars \
+    > /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/clumping/clumped_bgen/duplicate_variant_ids.txt
+
+
+zcat /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Test01_withdata/GCST90011766_buildGRCh37.txt.gz | awk '{print $8}' | grep -P "^\d+\.\d+$" | awk '$1 < 0.01'
+
+zcat /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Test01_withdata/GCST90011766_buildGRCh37.txt.gz | awk '$1 == "1" {print $8}' | grep -P "^\d+\.\d+$" | awk '$1 < 0.01'
+
+
+
+#Clumping for Full-PRS (POAG GWAS)
+
+for i in {1..22}; do 
+    /mnt/programs/plink1.9/plink \
+    --bfile /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/clumping/downcode_bgen/chr${i}_downcoded \
+    --clump-field p_value \
+    --clump-p1 0.001 \
+    --clump-p2 0.1 \
+    --clump-r2 0.1 \
+    --clump-kb 250 \
+    --clump-snp-field variant_id \
+    --clump /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Test01_withdata/GCST90011766_buildGRCh37.txt.gz \
+    --export-bgen /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/clumping/clumped_bgen/chr${i}_clumped
+done
+
+
+#Running with clumped snp list for the Full-PRS model
+Rscript /mnt/programs/PRSice2/PRSice.R \
+ --prsice /mnt/programs/PRSice2/PRSice_linux \
+ --base /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Test01_withdata/GCST90011766_buildGRCh37.txt.gz \
+ --A1 effect_allele \
+ --A2 other_allele \
+ --chr chromosome \
+ --snp variant_id \
+ --bp base_pair_location \
+ --no-clump \
+ --pvalue p_value \
+ --stat beta \
+ --bar-levels 5e-08,1e-06,1e-05,0.0001,0.001,0.01,0.05,0.1,0.2,0.3,0.4,0.5,1 \
+ --cov-col FID,IID,sex,Age_at_Recruitment,@PC[1-10] \
+ --cov-file /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/new_cov.txt \
+ --fastscore \
+ --model add \
+ --target /mnt/shared_folders/eResearch_glaucoma_project/UKBB_Data_Basket2/imputed_genome/ukb22828_c#_b0_v3,/mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Test01_withdata/ukb22828_c1_b0_v3_s487208.sample \
+ --pheno /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/new_case_control.txt \
+ --thread 6 \
+ --type bgen \
+ --pheno-col Phenotypes \
+ --binary-target T \
+ --logit-perm \
+ --quantile 10 \
+ --keep-ambig \
+ --extract /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/PRS_output/trial03.valid \
+ --print-snp \
+ --out /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/PRS_output/trial04 
+
+Add this before .valid file (clumped snp list) for above 
+--extract /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/clumping/clumped_SNP.txt \
+
+
+#MYOC ids
+/mnt/shared_folders/eResearch_glaucoma_project/plink2/plink2 \
+--bfile /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Post_PRS/Post_PRS \
+--snp rs74315329 \
+--recode vcf \
+--out /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Post_PRS/tryingagain
+
+
+#Using the three glaucoma definitions to calculate prs (replace the GD file)
+Rscript /mnt/programs/PRSice2/PRSice.R \
+ --prsice /mnt/programs/PRSice2/PRSice_linux \
+ --base /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Test01_withdata/GCST90011766_buildGRCh37.txt.gz \
+ --A1 effect_allele \
+ --A2 other_allele \
+ --chr chromosome \
+ --snp variant_id \
+ --bp base_pair_location \
+ --no-clump \
+ --pvalue p_value \
+ --stat beta \
+ --bar-levels 5e-08,1e-06,1e-05,0.0001,0.001,0.01,0.05,0.1,0.2,0.3,0.4,0.5,1 \
+ --cov-col FID,IID,sex,Age_at_Recruitment,@PC[1-10] \
+ --cov-file /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/new_cov.txt \
+ --fastscore \
+ --model add \
+ --target /mnt/shared_folders/eResearch_glaucoma_project/UKBB_Data_Basket2/imputed_genome/ukb22828_c#_b0_v3,/mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Test01_withdata/ukb22828_c1_b0_v3_s487208.sample \
+ --pheno /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/Treated_diagnosed_case_control.txt \
+ --thread 6 \
+ --type bgen \
+ --pheno-col Phenotypes \
+ --binary-target T \
+ --logit-perm \
+ --quantile 10 \
+ --keep-ambig \
+ --extract /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/PRS_output/Craig_Treated_diagnosed.valid \
+ --out /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/PRS_output/Craig_Treated_diagnosed
+
+
+#Clumping for VCDR GWAS
+for i in {1..22}; do 
+    /mnt/programs/plink1.9/plink \
+    --bfile /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/clumping/downcode_bgen/chr${i}_downcoded \
+    --clump-field P-value \
+    --clump-p1 0.001 \
+    --clump-p2 0.1 \
+    --clump-r2 0.1 \
+    --clump-kb 250 \
+    --clump-snp-field SNP \
+    --clump /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/Meta_VCDR_age_sex_caucasians_withoutSouthampton_MAF0.01_20160806.1tbl.gz \
+    --out /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/clumping/Clumped_VCDR/chr${i}_clumped_VCDR
+done
+
+#Clumping for IOP GWAS
+for i in {1..22}; do 
+    /mnt/programs/plink1.9/plink \
+    --bfile /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/clumping/downcode_bgen/chr${i}_downcoded \
+    --clump-field P-value \
+    --clump-p1 0.001 \
+    --clump-p2 0.1 \
+    --clump-r2 0.1 \
+    --clump-kb 250 \
+    --clump-snp-field SNP \
+    --clump /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/Meta_IOP_age_sex_caucasians_MAF0.01_20160806.1tbl.gz \
+    --out /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/clumping/Clumped_IOP/chr${i}_clumped_IOP
+done
+
+
+#Running prsice2 for VCDR 
+Rscript /mnt/programs/PRSice2/PRSice.R \
+ --prsice /mnt/programs/PRSice2/PRSice_linux \
+ --base /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/Meta_VCDR_age_sex_caucasians_withoutSouthampton_MAF0.01_20160806.1tbl.gz \
+ --A1 effect_allele \
+ --A2 other_allele \
+ --snp SNP \
+ --no-clump \
+ --pvalue P-value \
+ --stat Effect \
+ --beta \
+ --bar-levels 5e-08,1e-06,1e-05,0.0001,0.001,0.01,0.05,0.1,0.2,0.3,0.4,0.5,1 \
+ --cov-col FID,IID,sex,Age_at_Recruitment,@PC[1-10] \
+ --cov-file /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/new_cov.txt \
+ --fastscore \
+ --model add \
+ --target /mnt/shared_folders/eResearch_glaucoma_project/UKBB_Data_Basket2/imputed_genome/ukb22828_c#_b0_v3,/mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Test01_withdata/ukb22828_c1_b0_v3_s487208.sample \
+ --pheno /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/new_case_control.txt \
+ --thread 6 \
+ --type bgen \
+ --pheno-col Phenotypes \
+ --binary-target T \
+ --logit-perm \
+ --quantile 10 \
+ --keep-ambig \
+ --extract /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/clumping/clumped_SNP_VCDR.txt \
+ --out /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/PRS_output/VCDR
+
+
+#Running prsice2 for IOP
+Rscript /mnt/programs/PRSice2/PRSice.R \
+ --prsice /mnt/programs/PRSice2/PRSice_linux \
+ --base /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/Meta_IOP_age_sex_caucasians_MAF0.01_20160806.1tbl.gz \
+ --A1 effect_allele \
+ --A2 other_allele \
+ --snp SNP \
+ --no-clump \
+ --pvalue P-value \
+ --stat Effect \
+ --beta \
+ --bar-levels 5e-08,1e-06,1e-05,0.0001,0.001,0.01,0.05,0.1,0.2,0.3,0.4,0.5,1 \
+ --cov-col FID,IID,sex,Age_at_Recruitment,@PC[1-10] \
+ --cov-file /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/new_cov.txt \
+ --fastscore \
+ --model add \
+ --target /mnt/shared_folders/eResearch_glaucoma_project/UKBB_Data_Basket2/imputed_genome/ukb22828_c#_b0_v3,/mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Test01_withdata/ukb22828_c1_b0_v3_s487208.sample \
+ --pheno /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/new_case_control.txt \
+ --thread 6 \
+ --type bgen \
+ --pheno-col Phenotypes \
+ --binary-target T \
+ --logit-perm \
+ --quantile 10 \
+ --keep-ambig \
+ --extract /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/clumping/clumped_SNP_IOP.txt \
+ --out /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/PRS_output/IOP
+
+
+#Combined gwas
+Rscript /mnt/programs/PRSice2/PRSice.R \
+ --prsice /mnt/programs/PRSice2/PRSice_linux \
+ --base /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/combining_GWAS/combined_gwas.txt.gz \
+ --A1 effect_allele \
+ --A2 other_allele \
+ --snp variant_id \
+ --no-clump \
+ --value p_value \
+ --stat beta \
+ --bar-levels 5e-08,1e-06,1e-05,0.0001,0.001,0.01,0.05,0.1,0.2,0.3,0.4,0.5,1 \
+ --cov-col FID,IID,sex,Age_at_Recruitment,@PC[1-10] \
+ --cov-file /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/new_cov.txt \
+ --fastscore \
+ --model add \
+ --target /mnt/shared_folders/eResearch_glaucoma_project/UKBB_Data_Basket2/imputed_genome/ukb22828_c#_b0_v3,/mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Test01_withdata/ukb22828_c1_b0_v3_s487208.sample \
+ --pheno /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/new_case_control.txt \
+ --thread 6 \
+ --type bgen \
+ --pheno-col Phenotypes \
+ --binary-target T \
+ --logit-perm \
+ --quantile 10 \
+ --keep-ambig \
+ --extract /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/combining_GWAS/combined_snp_list.txt  \
+ --out /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/combining_GWAS/combined_gwas_3
+
+
+#Glaucoma definition for vcdr and IOP gwas 
+Rscript /mnt/programs/PRSice2/PRSice.R \
+ --prsice /mnt/programs/PRSice2/PRSice_linux \
+ --base /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/Meta_IOP_age_sex_caucasians_MAF0.01_20160806.1tbl.gz \
+ --A1 effect_allele \
+ --A2 other_allele \
+ --snp SNP \
+ --no-clump \
+ --pvalue P-value \
+ --stat Effect \
+ --beta \
+ --bar-levels 5e-08,1e-06,1e-05,0.0001,0.001,0.01,0.05,0.1,0.2,0.3,0.4,0.5,1 \
+ --cov-col FID,IID,sex,Age_at_Recruitment,@PC[1-10] \
+ --cov-file /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/new_cov.txt \
+ --fastscore \
+ --model add \
+ --target /mnt/shared_folders/eResearch_glaucoma_project/UKBB_Data_Basket2/imputed_genome/ukb22828_c#_b0_v3,/mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Test01_withdata/ukb22828_c1_b0_v3_s487208.sample \
+ --pheno /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/Treated_undiagnosed_case_control.txt \
+ --thread 6 \
+ --type bgen \
+ --pheno-col Phenotypes \
+ --binary-target T \
+ --logit-perm \
+ --quantile 10 \
+ --keep-ambig \
+ --extract /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/clumping/clumped_SNP_IOP.txt \
+ --out /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Glaucoma_definition/PRS_outcomes/IOP_Treated_undiagnosed
+
+
+#POAG Gwas with combined snp list 
+Rscript /mnt/programs/PRSice2/PRSice.R \
+ --prsice /mnt/programs/PRSice2/PRSice_linux \
+ --base /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Test01_withdata/GCST90011766_buildGRCh37.txt.gz \
+ --A1 effect_allele \
+ --A2 other_allele \
+ --chr chromosome \
+ --snp variant_id \
+ --bp base_pair_location \
+ --no-clump \
+ --pvalue p_value \
+ --stat beta \
+ --bar-levels 5e-08,1e-06,1e-05,0.0001,0.001,0.01,0.05,0.1,0.2,0.3,0.4,0.5,1 \
+ --cov-col FID,IID,sex,Age_at_Recruitment,@PC[1-10] \
+ --cov-file /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/new_cov.txt \
+ --fastscore \
+ --model add \
+ --target /mnt/shared_folders/eResearch_glaucoma_project/UKBB_Data_Basket2/imputed_genome/ukb22828_c#_b0_v3,/mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Test01_withdata/ukb22828_c1_b0_v3_s487208.sample \
+ --pheno /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/new_case_control.txt \
+ --thread 6 \
+ --type bgen \
+ --pheno-col Phenotypes \
+ --binary-target T \
+ --logit-perm \
+ --quantile 10 \
+ --keep-ambig \
+ --extract /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/combining_GWAS/combined_snps_POAGgwas.valid \
+ --out /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/combining_GWAS/combined_snps_POAGgwas
+
+
+
+#Running for patient over the age of 60 (replace with under_60 file for people with age under 60)
+Rscript /mnt/programs/PRSice2/PRSice.R \
+ --prsice /mnt/programs/PRSice2/PRSice_linux \
+ --base /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Test01_withdata/GCST90011766_buildGRCh37.txt.gz \
+ --A1 effect_allele \
+ --A2 other_allele \
+ --chr chromosome \
+ --snp variant_id \
+ --bp base_pair_location \
+ --no-clump \
+ --pvalue p_value \
+ --stat beta \
+ --bar-levels 5e-08,1e-06,1e-05,0.0001,0.001,0.01,0.05,0.1,0.2,0.3,0.4,0.5,1 \
+ --cov-col FID,IID,sex,Age_at_Recruitment,@PC[1-10] \
+ --cov-file /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/new_cov.txt \
+ --fastscore \
+ --model add \
+ --target /mnt/shared_folders/eResearch_glaucoma_project/UKBB_Data_Basket2/imputed_genome/ukb22828_c#_b0_v3,/mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Test01_withdata/ukb22828_c1_b0_v3_s487208.sample \
+ --pheno /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/new_case_control.txt \
+ --thread 6 \
+ --type bgen \
+ --pheno-col Phenotypes \
+ --binary-target T \
+ --logit-perm \
+ --quantile 10 \
+ --keep-ambig \
+ --keep /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/prs_for_over_60/over_60.txt \
+ --extract /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/prs_for_over_60/age_over_60_2.0.valid \
+ --out /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/prs_for_over_60/age_over_60_2.0 
+
+ --extract /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/PRS_output/trial03.valid \
+
+#Running for male patients 
+Rscript /mnt/programs/PRSice2/PRSice.R \
+ --prsice /mnt/programs/PRSice2/PRSice_linux \
+ --base /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Test01_withdata/GCST90011766_buildGRCh37.txt.gz \
+ --A1 effect_allele \
+ --A2 other_allele \
+ --chr chromosome \
+ --snp variant_id \
+ --bp base_pair_location \
+ --no-clump \
+ --pvalue p_value \
+ --stat beta \
+ --bar-levels 5e-08,1e-06,1e-05,0.0001,0.001,0.01,0.05,0.1,0.2,0.3,0.4,0.5,1 \
+ --cov-col FID,IID,sex,Age_at_Recruitment,@PC[1-10] \
+ --cov-file /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/new_cov.txt \
+ --fastscore \
+ --model add \
+ --target /mnt/shared_folders/eResearch_glaucoma_project/UKBB_Data_Basket2/imputed_genome/ukb22828_c#_b0_v3,/mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Test01_withdata/ukb22828_c1_b0_v3_s487208.sample \
+ --pheno /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/new_case_control.txt \
+ --thread 6 \
+ --type bgen \
+ --pheno-col Phenotypes \
+ --binary-target T \
+ --logit-perm \
+ --quantile 10 \
+ --keep-ambig \
+ --keep /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/prs_for_over_60/UKBB_males.txt \
+ --extract /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/PRS_output/trial03.valid \
+ --out /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/prs_for_over_60/UKBB_males 
+
+
+
+#Running for female patients 
+Rscript /mnt/programs/PRSice2/PRSice.R \
+ --prsice /mnt/programs/PRSice2/PRSice_linux \
+ --base /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Test01_withdata/GCST90011766_buildGRCh37.txt.gz \
+ --A1 effect_allele \
+ --A2 other_allele \
+ --chr chromosome \
+ --snp variant_id \
+ --bp base_pair_location \
+ --no-clump \
+ --pvalue p_value \
+ --stat beta \
+ --bar-levels 5e-08,1e-06,1e-05,0.0001,0.001,0.01,0.05,0.1,0.2,0.3,0.4,0.5,1 \
+ --cov-col FID,IID,sex,Age_at_Recruitment,@PC[1-10] \
+ --cov-file /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/new_cov.txt \
+ --fastscore \
+ --model add \
+ --target /mnt/shared_folders/eResearch_glaucoma_project/UKBB_Data_Basket2/imputed_genome/ukb22828_c#_b0_v3,/mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Test01_withdata/ukb22828_c1_b0_v3_s487208.sample \
+ --pheno /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/new_case_control.txt \
+ --thread 6 \
+ --type bgen \
+ --pheno-col Phenotypes \
+ --binary-target T \
+ --logit-perm \
+ --quantile 10 \
+ --keep-ambig \
+ --keep /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/prs_for_over_60/UKBB_females.txt \
+ --extract /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/PRS_output/trial03.valid \
+ --out /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/prs_for_over_60/UKBB_females 
+
+
+#Running for IOP ove 22mmHg
+Rscript /mnt/programs/PRSice2/PRSice.R \
+ --prsice /mnt/programs/PRSice2/PRSice_linux \
+ --base /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Test01_withdata/GCST90011766_buildGRCh37.txt.gz \
+ --A1 effect_allele \
+ --A2 other_allele \
+ --chr chromosome \
+ --snp variant_id \
+ --bp base_pair_location \
+ --no-clump \
+ --pvalue p_value \
+ --stat beta \
+ --bar-levels 5e-08,1e-06,1e-05,0.0001,0.001,0.01,0.05,0.1,0.2,0.3,0.4,0.5,1 \
+ --cov-col FID,IID,sex,Age_at_Recruitment,@PC[1-10] \
+ --cov-file /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/new_cov.txt \
+ --fastscore \
+ --model add \
+ --target /mnt/shared_folders/eResearch_glaucoma_project/UKBB_Data_Basket2/imputed_genome/ukb22828_c#_b0_v3,/mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Test01_withdata/ukb22828_c1_b0_v3_s487208.sample \
+ --pheno /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/new_case_control.txt \
+ --thread 6 \
+ --type bgen \
+ --pheno-col Phenotypes \
+ --binary-target T \
+ --logit-perm \
+ --quantile 10 \
+ --keep-ambig \
+ --keep /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Post_PRS/IOP_over_22mmhg.txt \
+ --perm 10000 \
+ --extract /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/PRS_output/trial03.valid \
+ --out /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Post_PRS/PRS_output/IOP_over_22mmhg
+
+
+#Running for VCDR_regressed_transformed for over 0.6, MYOC, RNFL, GCL (replace the file name)
+Rscript /mnt/programs/PRSice2/PRSice.R \
+ --prsice /mnt/programs/PRSice2/PRSice_linux \
+ --base /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Test01_withdata/GCST90011766_buildGRCh37.txt.gz \
+ --A1 effect_allele \
+ --A2 other_allele \
+ --chr chromosome \
+ --snp variant_id \
+ --bp base_pair_location \
+ --no-clump \
+ --pvalue p_value \
+ --stat beta \
+ --bar-levels 5e-08,1e-06,1e-05,0.0001,0.001,0.01,0.05,0.1,0.2,0.3,0.4,0.5,1 \
+ --cov-col FID,IID,sex,Age_at_Recruitment,@PC[1-10] \
+ --cov-file /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/new_cov.txt \
+ --fastscore \
+ --model add \
+ --target /mnt/shared_folders/eResearch_glaucoma_project/UKBB_Data_Basket2/imputed_genome/ukb22828_c#_b0_v3,/mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Test01_withdata/ukb22828_c1_b0_v3_s487208.sample \
+ --pheno /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/new_case_control.txt \
+ --thread 6 \
+ --type bgen \
+ --pheno-col Phenotypes \
+ --binary-target T \
+ --logit-perm \
+ --quantile 10 \
+ --keep-ambig \
+ --keep /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Post_PRS/rnfl_under_23_47.txt \
+ --perm 10000 \
+ --extract /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/PRS_output/trial03.valid \
+ --out /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Post_PRS/PRS_output/rnfl_under_23_47
+
+#Cross validation for training (replace the file name)
+Rscript /mnt/programs/PRSice2/PRSice.R \
+ --prsice /mnt/programs/PRSice2/PRSice_linux \
+ --base /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Test01_withdata/GCST90011766_buildGRCh37.txt.gz \
+ --A1 effect_allele \
+ --A2 other_allele \
+ --chr chromosome \
+ --snp variant_id \
+ --bp base_pair_location \
+ --no-clump \
+ --pvalue p_value \
+ --stat beta \
+ --bar-levels 5e-08,1e-06,1e-05,0.0001,0.001,0.01,0.05,0.1,0.2,0.3,0.4,0.5,1 \
+ --cov-col FID,IID,sex,Age_at_Recruitment,@PC[1-10] \
+ --cov-file /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/new_cov.txt \
+ --fastscore \
+ --model add \
+ --target /mnt/shared_folders/eResearch_glaucoma_project/UKBB_Data_Basket2/imputed_genome/ukb22828_c#_b0_v3,/mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Test01_withdata/ukb22828_c1_b0_v3_s487208.sample \
+ --pheno /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/new_case_control.txt \
+ --thread 6 \
+ --type bgen \
+ --pheno-col Phenotypes \
+ --binary-target T \
+ --logit-perm \
+ --quantile 10 \
+ --keep-ambig \
+ --perm 10000 \
+ --keep /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Cross_validation_2/IID_FID_files/fold_10_train_FID_IID.txt \
+ --extract /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/PRS_output/trial03.valid \
+ --out /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Cross_validation_2/Training_PRSice_output/Fold_10/Train_10
+
+
+
+#CV on testing sets (replace the file name) 
+Rscript /mnt/programs/PRSice2/PRSice.R \
+ --prsice /mnt/programs/PRSice2/PRSice_linux \
+ --base /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Test01_withdata/GCST90011766_buildGRCh37.txt.gz \
+ --A1 effect_allele \
+ --A2 other_allele \
+ --chr chromosome \
+ --snp variant_id \
+ --bp base_pair_location \
+ --no-clump \
+ --pvalue p_value \
+ --stat beta \
+ --bar-levels 0.0001 \
+ --cov-col FID,IID,sex,Age_at_Recruitment,@PC[1-10] \
+ --cov-file /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/new_cov.txt \
+ --fastscore \
+ --no-full \
+ --model add \
+ --target /mnt/shared_folders/eResearch_glaucoma_project/UKBB_Data_Basket2/imputed_genome/ukb22828_c#_b0_v3,/mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Test01_withdata/ukb22828_c1_b0_v3_s487208.sample \
+ --pheno /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/new_case_control.txt \
+ --thread 6 \
+ --type bgen \
+ --pheno-col Phenotypes \
+ --binary-target T \
+ --logit-perm \
+ --quantile 10 \
+ --keep-ambig \
+ --perm 10000 \
+ --keep /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Cross_validation_2/IID_FID_files/fold_6_test_FID_IID.txt \
+ --extract /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/PRS_output/trial03.valid \
+ --out /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Cross_validation_2/Testing_PRSice_output/Test_6
+
+
+
+
+#To get the ukbb data with allelic dosage so I can calculate prs based on Craigs snp scores
+
+/mnt/shared_folders/eResearch_glaucoma_project/plink2/plink2 \
+--bgen /mnt/shared_folders/eResearch_glaucoma_project/UKBB_Data_Basket2/imputed_genome/ukb22828_c1_b0_v3.bgen ref-first \
+--extract /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Compare_PRS/craig_snp.txt \
+--export A \
+--out /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Compare_PRS/ukbb_snp \
+
+
+for i in {1..22}; do 
+    /mnt/shared_folders/eResearch_glaucoma_project/plink2/plink2 \
+    --bgen /mnt/shared_folders/eResearch_glaucoma_project/UKBB_Data_Basket2/imputed_genome/ukb22828_c${i}_b0_v3.bgen ref-first \
+    --extract /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Compare_PRS/craig_snp.txt \
+    --export A \
+    --sample /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Test01_withdata/ukb22828_c1_b0_v3_s487208.sample \
+    --out /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Compare_PRS/ukbb_snp${i}
+Done
+
+
+#Using Craig snp list for prsice (trial05): MTAG-PRSice-2 model 
+Rscript /mnt/programs/PRSice2/PRSice.R \
+ --prsice /mnt/programs/PRSice2/PRSice_linux \
+ --base /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Test01_withdata/GCST90011766_buildGRCh37.txt.gz \
+ --A1 effect_allele \
+ --A2 other_allele \
+ --chr chromosome \
+ --snp variant_id \
+ --bp base_pair_location \
+ --no-clump \
+ --pvalue p_value \
+ --stat beta \
+ --bar-levels 5e-08,1e-06,1e-05,0.0001,0.001,0.01,0.05,0.1,0.2,0.3,0.4,0.5,1 \
+ --cov-col FID,IID,sex,Age_at_Recruitment,@PC[1-10] \
+ --cov-file /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/new_cov.txt \
+ --fastscore \
+ --model add \
+ --target /mnt/shared_folders/eResearch_glaucoma_project/UKBB_Data_Basket2/imputed_genome/ukb22828_c#_b0_v3,/mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Test01_withdata/ukb22828_c1_b0_v3_s487208.sample \
+ --pheno /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/new_case_control.txt \
+ --thread 6 \
+ --type bgen \
+ --pheno-col Phenotypes \
+ --binary-target T \
+ --logit-perm \
+ --quantile 10 \
+ --extract /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Compare_PRS/craig_rsid_list.txt \
+ --extract /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/PRS_output/trial05.valid \
+ --out /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/PRS_output/trial05
+
+
+#Craig treated_diagnosed with iop gwas
+Rscript /mnt/programs/PRSice2/PRSice.R \
+ --prsice /mnt/programs/PRSice2/PRSice_linux \
+ --base /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/Meta_IOP_age_sex_caucasians_MAF0.01_20160806.1tbl.gz \
+ --A1 effect_allele \
+ --A2 other_allele \
+ --snp SNP \
+ --no-clump \
+ --pvalue P-value \
+ --stat Effect \
+ --beta \
+ --bar-levels 5e-08,1e-06,1e-05,0.0001,0.001,0.01,0.05,0.1,0.2,0.3,0.4,0.5,1 \
+ --cov-col FID,IID,sex,Age_at_Recruitment,@PC[1-10] \
+ --cov-file /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/new_cov.txt \
+ --fastscore \
+ --model add \
+ --target /mnt/shared_folders/eResearch_glaucoma_project/UKBB_Data_Basket2/imputed_genome/ukb22828_c#_b0_v3,/mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Test01_withdata/ukb22828_c1_b0_v3_s487208.sample \
+ --pheno /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/Treated_diagnosed_case_control.txt \
+ --thread 6 \
+ --type bgen \
+ --pheno-col Phenotypes \
+ --binary-target T \
+ --logit-perm \
+ --quantile 10 \
+ --keep-ambig \
+ --extract /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/clumping/clumped_SNP_IOP.txt \
+ --out /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Glaucoma_definition/PRS_outcomes/Craig_IOP_Treated_diagnosed
+
+#Craig iop gwas all cases and controls
+Rscript /mnt/programs/PRSice2/PRSice.R \
+ --prsice /mnt/programs/PRSice2/PRSice_linux \
+ --base /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/Meta_IOP_age_sex_caucasians_MAF0.01_20160806.1tbl.gz \
+ --A1 effect_allele \
+ --A2 other_allele \
+ --snp SNP \
+ --no-clump \
+ --pvalue P-value \
+ --stat Effect \
+ --beta \
+ --bar-levels 5e-08,1e-06,1e-05,0.0001,0.001,0.01,0.05,0.1,0.2,0.3,0.4,0.5,1 \
+ --cov-col FID,IID,sex,Age_at_Recruitment,@PC[1-10] \
+ --cov-file /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/new_cov.txt \
+ --fastscore \
+ --model add \
+ --target /mnt/shared_folders/eResearch_glaucoma_project/UKBB_Data_Basket2/imputed_genome/ukb22828_c#_b0_v3,/mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Test01_withdata/ukb22828_c1_b0_v3_s487208.sample \
+ --pheno /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/new_case_control.txt \
+ --thread 6 \
+ --type bgen \
+ --pheno-col Phenotypes \
+ --binary-target T \
+ --logit-perm \
+ --quantile 10 \
+ --extract /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/PRS_output/Craig_IOPgwas.valid\
+ --out /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/PRS_output/Craig_IOPgwas
+
+
+#Craig vcdr gwas all cases and controls
+Rscript /mnt/programs/PRSice2/PRSice.R \
+ --prsice /mnt/programs/PRSice2/PRSice_linux \
+ --base /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/Meta_VCDR_age_sex_caucasians_withoutSouthampton_MAF0.01_20160806.1tbl.gz \
+ --A1 effect_allele \
+ --A2 other_allele \
+ --snp SNP \
+ --no-clump \
+ --pvalue P-value \
+ --stat Effect \
+ --beta \
+ --bar-levels 5e-08,1e-06,1e-05,0.0001,0.001,0.01,0.05,0.1,0.2,0.3,0.4,0.5,1 \
+ --cov-col FID,IID,sex,Age_at_Recruitment,@PC[1-10] \
+ --cov-file /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/new_cov.txt \
+ --fastscore \
+ --model add \
+ --target /mnt/shared_folders/eResearch_glaucoma_project/UKBB_Data_Basket2/imputed_genome/ukb22828_c#_b0_v3,/mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Test01_withdata/ukb22828_c1_b0_v3_s487208.sample \
+ --pheno /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/new_case_control.txt \
+ --thread 6 \
+ --type bgen \
+ --pheno-col Phenotypes \
+ --binary-target T \
+ --logit-perm \
+ --quantile 10 \
+ --extract /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/PRS_output/Craig_VCDRgwas.valid \
+ --out /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/PRS_output/Craig_VCDRgwas
+
+#Craig vcdr gwas TD
+Rscript /mnt/programs/PRSice2/PRSice.R \
+ --prsice /mnt/programs/PRSice2/PRSice_linux \
+ --base /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/Meta_VCDR_age_sex_caucasians_withoutSouthampton_MAF0.01_20160806.1tbl.gz \
+ --A1 effect_allele \
+ --A2 other_allele \
+ --snp SNP \
+ --no-clump \
+ --pvalue P-value \
+ --stat Effect \
+ --beta \
+ --bar-levels 5e-08,1e-06,1e-05,0.0001,0.001,0.01,0.05,0.1,0.2,0.3,0.4,0.5,1 \
+ --cov-col FID,IID,sex,Age_at_Recruitment,@PC[1-10] \
+ --cov-file /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/new_cov.txt \
+ --fastscore \
+ --model add \
+ --target /mnt/shared_folders/eResearch_glaucoma_project/UKBB_Data_Basket2/imputed_genome/ukb22828_c#_b0_v3,/mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Test01_withdata/ukb22828_c1_b0_v3_s487208.sample \
+ --pheno /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/Treated_diagnosed_case_control.txt  \
+ --thread 6 \
+ --type bgen \
+ --pheno-col Phenotypes \
+ --binary-target T \
+ --logit-perm \
+ --quantile 10 \
+ --extract /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/clumping/clumped_SNP_VCDR.txt  \
+ --out /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Glaucoma_definition/PRS_outcomes/Craig_VCDR_Treated_diagnosed
+
+
+#Craig UD for POAG
+Rscript /mnt/programs/PRSice2/PRSice.R \
+ --prsice /mnt/programs/PRSice2/PRSice_linux \
+ --base /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Test01_withdata/GCST90011766_buildGRCh37.txt.gz \
+ --A1 effect_allele \
+ --A2 other_allele \
+ --chr chromosome \
+ --snp variant_id \
+ --bp base_pair_location \
+ --no-clump \
+ --pvalue p_value \
+ --stat beta \
+ --bar-levels 5e-08,1e-06,1e-05,0.0001,0.001,0.01,0.05,0.1,0.2,0.3,0.4,0.5,1 \
+ --cov-col FID,IID,sex,Age_at_Recruitment,@PC[1-10] \
+ --cov-file /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/new_cov.txt \
+ --fastscore \
+ --model add \
+ --target /mnt/shared_folders/eResearch_glaucoma_project/UKBB_Data_Basket2/imputed_genome/ukb22828_c#_b0_v3,/mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Test01_withdata/ukb22828_c1_b0_v3_s487208.sample \
+ --pheno /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/Untreated_diagnosed_case_control.txt \
+ --thread 6 \
+ --type bgen \
+ --pheno-col Phenotypes \
+ --binary-target T \
+ --logit-perm \
+ --quantile 10 \
+ --extract /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Compare_PRS/craig_rsid_list.txt \
+ --out /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Glaucoma_definition/PRS_outcomes/Craig_POAG_Unteated_diagnosed
+
+
+#Running for POAG+Craig snp list (I already combined their indv prs but want to do this way as well): Hybrid model
+Rscript /mnt/programs/PRSice2/PRSice.R \
+ --prsice /mnt/programs/PRSice2/PRSice_linux \
+ --base /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Test01_withdata/GCST90011766_buildGRCh37.txt.gz \
+ --A1 effect_allele \
+ --A2 other_allele \
+ --chr chromosome \
+ --snp variant_id \
+ --bp base_pair_location \
+ --no-clump \
+ --pvalue p_value \
+ --stat beta \
+ --bar-levels 5e-08,1e-06,1e-05,0.0001,0.001,0.01,0.05,0.1,0.2,0.3,0.4,0.5,1 \
+ --cov-col FID,IID,sex,Age_at_Recruitment,@PC[1-10] \
+ --cov-file /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/new_cov.txt \
+ --fastscore \
+ --model add \
+ --target /mnt/shared_folders/eResearch_glaucoma_project/UKBB_Data_Basket2/imputed_genome/ukb22828_c#_b0_v3,/mnt/shared_folders/eResearch_glaucoma_project/Sirithi/Test01_withdata/ukb22828_c1_b0_v3_s487208.sample \
+ --pheno /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/new_case_control.txt \
+ --thread 6 \
+ --type bgen \
+ --pheno-col Phenotypes \
+ --binary-target T \
+ --logit-perm \
+ --quantile 10 \
+ --extract /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/PRS_output/Combined_POAG_Craig_snplist.valid \
+ --out /mnt/shared_folders/eResearch_glaucoma_project/Sirithi/16_02_new_case_control_and_cov_file/PRS_output/Combined_POAG_Craig_snplist
+
+
